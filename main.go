@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
 	"github.com/htet-29/gator/internal/config"
+	"github.com/htet-29/gator/internal/database"
+	"github.com/jackc/pgx/v5"
 )
 
 type state struct {
+	db  *database.Queries
 	cfg *config.Config
 }
 
@@ -17,7 +21,16 @@ func main() {
 		log.Fatalf("error reading config: %v", err)
 	}
 
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, cfg.DBUrl)
+	if err != nil {
+		log.Fatalf("error connecting to db: %v", err)
+	}
+	defer conn.Close(ctx)
+	dbQueries := database.New(conn)
+
 	programState := &state{
+		db:  dbQueries,
 		cfg: &cfg,
 	}
 
@@ -25,6 +38,9 @@ func main() {
 		registeredCommands: make(map[string]func(*state, command) error),
 	}
 	cmds.register("login", handlerLogin)
+	cmds.register("register", handlerRegister)
+	cmds.register("reset", handlerDeleteAllUsers)
+	cmds.register("users", handlerGetAllUsers)
 
 	if len(os.Args) < 2 {
 		log.Fatal("Usage: cli <command> [args...]")
