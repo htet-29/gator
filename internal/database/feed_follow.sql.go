@@ -67,22 +67,25 @@ func (q *Queries) CreateFeedFollow(ctx context.Context, arg CreateFeedFollowPara
 }
 
 const getFeedFollowForUser = `-- name: GetFeedFollowForUser :many
-SELECT feeds.name AS feed_name, users.name AS user_name
-FROM users
-INNER JOIN feed_follows
-ON feed_follows.user_id = users.id
-INNER JOIN feeds
-ON feeds.id = feed_follows.feed_id
-WHERE users.name = $1
+SELECT feed_follows.id, feed_follows.created_at, feed_follows.updated_at, feed_follows.user_id, feed_follows.feed_id, feeds.name AS feed_name, users.name AS user_name
+FROM feed_follows
+INNER JOIN feeds ON feed_follows.feed_id = feeds.id
+INNER JOIN users ON feed_follows.user_id = users.id
+WHERE feed_follows.user_id = $1
 `
 
 type GetFeedFollowForUserRow struct {
-	FeedName string
-	UserName string
+	ID        pgtype.UUID
+	CreatedAt pgtype.Timestamp
+	UpdatedAt pgtype.Timestamp
+	UserID    pgtype.UUID
+	FeedID    pgtype.UUID
+	FeedName  string
+	UserName  string
 }
 
-func (q *Queries) GetFeedFollowForUser(ctx context.Context, name string) ([]GetFeedFollowForUserRow, error) {
-	rows, err := q.db.Query(ctx, getFeedFollowForUser, name)
+func (q *Queries) GetFeedFollowForUser(ctx context.Context, userID pgtype.UUID) ([]GetFeedFollowForUserRow, error) {
+	rows, err := q.db.Query(ctx, getFeedFollowForUser, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +93,15 @@ func (q *Queries) GetFeedFollowForUser(ctx context.Context, name string) ([]GetF
 	var items []GetFeedFollowForUserRow
 	for rows.Next() {
 		var i GetFeedFollowForUserRow
-		if err := rows.Scan(&i.FeedName, &i.UserName); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.UserID,
+			&i.FeedID,
+			&i.FeedName,
+			&i.UserName,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -99,4 +110,20 @@ func (q *Queries) GetFeedFollowForUser(ctx context.Context, name string) ([]GetF
 		return nil, err
 	}
 	return items, nil
+}
+
+const unfollowFeed = `-- name: UnfollowFeed :exec
+DELETE FROM feed_follows 
+WHERE feed_id = $1
+AND user_id = $2
+`
+
+type UnfollowFeedParams struct {
+	FeedID pgtype.UUID
+	UserID pgtype.UUID
+}
+
+func (q *Queries) UnfollowFeed(ctx context.Context, arg UnfollowFeedParams) error {
+	_, err := q.db.Exec(ctx, unfollowFeed, arg.FeedID, arg.UserID)
+	return err
 }

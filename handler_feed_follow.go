@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func handlerCreateFeedFollow(s *state, cmd command) error {
+func handlerFollow(s *state, cmd command, user database.User) error {
 	if len(cmd.Args) != 1 {
 		return fmt.Errorf("usage: %s <url>", cmd.Name)
 	}
@@ -23,12 +23,7 @@ func handlerCreateFeedFollow(s *state, cmd command) error {
 		return fmt.Errorf("couldn't get feed: %w", err)
 	}
 
-	user, err := s.db.GetUser(ctx, s.cfg.CurrentUsername)
-	if err != nil {
-		return fmt.Errorf("couldn't get user: %w", err)
-	}
-
-	feedfollow, err := s.db.CreateFeedFollow(ctx, database.CreateFeedFollowParams{
+	ffRow, err := s.db.CreateFeedFollow(ctx, database.CreateFeedFollowParams{
 		ID:        pgtype.UUID{Bytes: uuid.New(), Valid: true},
 		CreatedAt: pgtype.Timestamp{Time: time.Now(), Valid: true},
 		UpdatedAt: pgtype.Timestamp{Time: time.Now(), Valid: true},
@@ -38,26 +33,55 @@ func handlerCreateFeedFollow(s *state, cmd command) error {
 	if err != nil {
 		return fmt.Errorf("couldn't create feed follow: %w", err)
 	}
-	printFeedFollow(feedfollow)
+	fmt.Println("Feed follow created:")
+	printFeedFollow(ffRow.UserName, ffRow.FeedName)
 	return nil
 }
 
-func handlerGetFeedFollows(s *state, cmd command) error {
-	feeds, err := s.db.GetFeedFollowForUser(context.Background(), s.cfg.CurrentUsername)
+func handlerListFeedFollows(s *state, cmd command, user database.User) error {
+	feedFollows, err := s.db.GetFeedFollowForUser(context.Background(), user.ID)
 	if err != nil {
 		return fmt.Errorf("couldn't get feed follows: %w", err)
 	}
-	for _, feed := range feeds {
-		printFeedFollowsForUser(feed)
+
+	if len(feedFollows) == 0 {
+		fmt.Println("No feed follows found for this user.")
+		return nil
+	}
+
+	fmt.Printf("Feed follows for user %s:\n", user.Name)
+	for _, ff := range feedFollows {
+		fmt.Printf("* %s\n", ff.FeedName)
 	}
 	return nil
 }
 
-func printFeedFollow(feed database.CreateFeedFollowRow) {
-	fmt.Printf(" * Feed Name: %s\n", feed.FeedName)
-	fmt.Printf(" * User Name: %s\n", feed.UserName)
+func handlerUnfollowFeed(s *state, cmd command, user database.User) error {
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %s <url>", cmd.Name)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	feed, err := s.db.GetFeedByURL(ctx, cmd.Args[0])
+	if err != nil {
+		return fmt.Errorf("couldn't get a feed: %w", err)
+	}
+
+	err = s.db.UnfollowFeed(context.Background(), database.UnfollowFeedParams{
+		FeedID: feed.ID,
+		UserID: user.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("couldn't unfollow a feed: %w", err)
+	}
+
+	fmt.Println("Unfollow a feed successfully")
+	return nil
 }
 
-func printFeedFollowsForUser(feed database.GetFeedFollowForUserRow) {
-	fmt.Printf(" * Feed Name: %s | User Name: %s\n", feed.FeedName, feed.UserName)
+func printFeedFollow(username, feedname string) {
+	fmt.Printf("* User:          %s\n", username)
+	fmt.Printf("* Feed:          %s\n", feedname)
 }
