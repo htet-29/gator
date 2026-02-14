@@ -55,15 +55,6 @@ func handlerLogin(s *state, cmd command) error {
 	return nil
 }
 
-func handlerDeleteAllUsers(s *state, cmd command) error {
-	err := s.db.DeleteAllUsers(context.Background())
-	if err != nil {
-		return fmt.Errorf("couldn't delete all users: %w", err)
-	}
-	fmt.Println("delete all users successfully")
-	return nil
-}
-
 func handlerGetAllUsers(s *state, cmd command) error {
 	users, err := s.db.GetUsers(context.Background())
 	if err != nil {
